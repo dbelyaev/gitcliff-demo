@@ -1,0 +1,76 @@
+# Description:
+# This workflow is triggered on push to the main branch.
+# It prepares a draft release on GitHub.
+
+name: CD - Draft release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+
+  # determine the version number for upcoming release from the last commit message
+  find-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release-find-version.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - id: release-find-version
+        uses: ./.github/actions/release-find-version
+
+  # generate changelog for the upcoming release
+  generate-changelog:
+    runs-on: ubuntu-latest
+    needs: find-version
+
+    outputs:
+      release-body: ${{ steps.git-cliff.outputs.content }}
+
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+        with:
+          fetch-depth: 0 # this fetch will include all history and tags
+
+      - id: git-cliff
+        uses: orhun/git-cliff-action@b946ed27a675d653b308f29a7bbad813b85bf7aa # v3.3.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          config: cliff.toml
+          # --unreleased: process commits that do not belong to a tag
+          # --tag : sets the tag for the upcoming release
+          args: --verbose \
+            --unreleased \
+            --tag v${{ needs.find-version.outputs.version }} \
+            --github-repo ${{ github.repository }}
+
+  # prepare GitHub release
+  draft-github-release:
+    runs-on: ubuntu-latest
+    needs: [find-version, generate-changelog]
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Draft GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Prepare a draft of GitHub release for version ${{ needs.find-version.outputs.version }}"
+          gh release create v${{ needs.find-version.outputs.version }} \
+            --draft \
+            --target main \
+            --title v${{ needs.find-version.outputs.version }} \
+            --notes "${{ needs.generate-changelog.outputs.release-body }}"
