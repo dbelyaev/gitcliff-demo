@@ -49,8 +49,7 @@ jobs:
           # --tag : sets the tag for the upcoming release
           args: --verbose \
             --unreleased \
-            --tag v${{ needs.find-version.outputs.version }} \
-            --github-repo ${{ github.repository }}
+            --tag v${{ needs.find-version.outputs.version }}
 
   # prepare GitHub release
   draft-github-release:
